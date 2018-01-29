@@ -16,28 +16,28 @@ def D_euc(X,Z):
     return dist
 
 #---Q2 Making Prediction for Regression---
-def cnn(X,Z,k):
+def cnn(NewData,TrainData,k):
     '''Choosing nearest number
-    Input: X is a N1xd matrix (i.e. testData)
-           Z is a N2xd matirx (i.e. trainData)
+    Input: NewData is a N1xd matrix (i.e. testData)
+           TrainData is a N2xd matirx (i.e. trainData)
            k is number of smallest value
-    Output: Index (N1xk) and Responsibility(N1xN2) of nearest neighbors
+    Output: Index(N1xk) and responsibility matrix(N1xN2)
     '''
-    l2 = D_euc(X,Z)
+    l2 = D_euc(NewData,TrainData)
     print ('Euc dist shape is :',l2.shape)
     #No bot_k exists in tf, so make Euc dist negative to sort
-    a,b = sess.run(tf.nn.top_k(-l2,k=k))
+    value,index = sess.run(tf.nn.top_k(-l2,k=k))
     #res = tf.zeros(tf.shape(l2), tf.int32)
     #res = tf.SparseTensorValue(indices = b, values = a, dense_shape = tf.shape(l2))
     res = np.zeros(l2.shape)
-    c,d = b.shape
-    print (c,d)
-    for j in range(d):
-        for i in range(c):
+    rown,coln = index.shape
+    print (rown,coln)
+    for j in range(coln):
+        for i in range(rown):
 
-            aidx = b[i,j]
+            aidx = index[i,j]
             res[i,aidx] = 1/k
-    return b,res
+    return index,res
 
 #---Q2 setup, codes given---
 np.random.seed(521)
@@ -50,24 +50,27 @@ trainData, trainTarget = Data[randIdx[:80]], Target[randIdx[:80]]
 validData, validTarget = Data[randIdx[80:90]], Target[randIdx[80:90]]
 testData, testTarget = Data[randIdx[90:100]], Target[randIdx[90:100]]
 
+#---initialize newData---
+newData = np.linspace(1.0,10.0,num =1000)[:, np.newaxis]
+
 #---tensorflow setup---
 init = tf.global_variables_initializer()
 sess = tf.Session()
 sess.run(init)
 
 #---run Q2 ---
-def Q2_run(X,Z,k,Xtarget,Ztarget,flag = 0):
-    idx, resp = cnn(X, Z, k)
-    pred = resp @ Ztarget
-    MSE = sum((pred - Xtarget)) ** 2 / (2 * len(pred))
-    print ('k = ',k,' MSE = ',np.asscalar(MSE))
+def Q2_run(NewData,TrainData,k,XTarget,TrainTarget,flag = 0):
+    idx, Responsibility = cnn(NewData, TrainData, k)
+    Pred = Responsibility @ TrainTarget
+    # MSE = sum((pred - Xtarget)) ** 2 / (2 * len(pred))
+    # print ('k = ',k,' MSE = ',np.asscalar(MSE))
     if flag:
 
         plt.figure()
-        plt.plot(trainData, trainTarget, 'b.',label = 'train')
-        plt.plot(validData, validTarget, 'r.',label = 'valid')
-        plt.plot(testData,testTarget,'y.',label = 'test')
-        plt.plot(X, pred, 'go',label = 'prediction')
+        plt.plot(trainData, trainTarget, 'bo',label = 'train')
+        plt.plot(validData, validTarget, 'ro',label = 'valid')
+        plt.plot(testData,testTarget,'yo',label = 'test')
+        plt.plot(NewData, Pred, 'g.',label = 'prediction')
         plt.title('k = '+str(k))
         plt.legend(loc = 2)
 
@@ -78,11 +81,10 @@ def Q2_run(X,Z,k,Xtarget,Ztarget,flag = 0):
 # print(pred)
 # print(testTarget)
 
-
 #---add to main---
 for k_num in [1,3,5,50]:
-    #change the 1st and 4th arg to do train and test MSE
-    Q2_run(validData,trainData,k_num,validTarget,trainTarget,flag = 1)
+    #change the 4th arg to do train and test 
+    Q2_run(newData,trainData,k_num,validTarget,trainTarget,flag = 1)
 
 plt.show()
 
