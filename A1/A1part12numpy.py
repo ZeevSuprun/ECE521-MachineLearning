@@ -21,7 +21,7 @@ def cnn(X,Z,k):
     Input: X is a N1xd matrix (i.e. testData)
            Z is a N2xd matirx (i.e. trainData)
            k is number of smallest value
-    Output: Value and Index of nn (both are N1xk matrices)
+    Output: Index (N1xk) and Responsibility(N1xN2) of nearest neighbors
     '''
     l2 = D_euc(X,Z)
     print ('Euc dist shape is :',l2.shape)
