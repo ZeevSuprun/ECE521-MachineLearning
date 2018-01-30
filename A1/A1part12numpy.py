@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 #---Q1 Euclidean Distance Function---
 def D_euc(X,Z):
     '''
+    Euclidean distance
     Input: X is a N1xd matrix
            Z is a N2xd matirx
     Output: dist is a NxM matrix where dist[i,j] is the square norm between A[i,:] and B[j,:]
@@ -16,28 +17,24 @@ def D_euc(X,Z):
     return dist
 
 #---Q2 Making Prediction for Regression---
-def cnn(NewData,TrainData,k):
-    '''Choosing nearest number
+def Avgnn(NewData,TrainData,k):
+    '''
+    Average nearest number
     Input: NewData is a N1xd matrix (i.e. testData)
            TrainData is a N2xd matirx (i.e. trainData)
            k is number of smallest value
     Output: Index(N1xk) and responsibility matrix(N1xN2)
     '''
     l2 = D_euc(NewData,TrainData)
-    print ('Euc dist shape is :',l2.shape)
     #No bot_k exists in tf, so make Euc dist negative to sort
     value,index = sess.run(tf.nn.top_k(-l2,k=k))
-    #res = tf.zeros(tf.shape(l2), tf.int32)
-    #res = tf.SparseTensorValue(indices = b, values = a, dense_shape = tf.shape(l2))
-    res = np.zeros(l2.shape)
+    responsibility = np.zeros(l2.shape)
     rown,coln = index.shape
-    print (rown,coln)
     for j in range(coln):
         for i in range(rown):
-
-            aidx = index[i,j]
-            res[i,aidx] = 1/k
-    return index,res
+            responsibilityIndex = index[i,j]
+            responsibility[i,responsibilityIndex] = 1/k
+    return index,responsibility
 
 #---Q2 setup, codes given---
 np.random.seed(521)
@@ -60,8 +57,8 @@ sess.run(init)
 
 #---run Q2 ---
 def Q2_run(NewData,TrainData,k,XTarget,TrainTarget,flag = 0):
-    idx, Responsibility = cnn(NewData, TrainData, k)
-    Pred = Responsibility @ TrainTarget
+    index, responsibility = Avgnn(NewData, TrainData, k)
+    prediction = responsibility @ TrainTarget
     # MSE = sum((pred - Xtarget)) ** 2 / (2 * len(pred))
     # print ('k = ',k,' MSE = ',np.asscalar(MSE))
     if flag:
@@ -70,7 +67,7 @@ def Q2_run(NewData,TrainData,k,XTarget,TrainTarget,flag = 0):
         plt.plot(trainData, trainTarget, 'bo',label = 'train')
         plt.plot(validData, validTarget, 'ro',label = 'valid')
         plt.plot(testData,testTarget,'yo',label = 'test')
-        plt.plot(NewData, Pred, 'g.',label = 'prediction')
+        plt.plot(NewData, prediction, 'g',label = 'prediction')
         plt.title('k = '+str(k))
         plt.legend(loc = 2)
 
@@ -83,9 +80,12 @@ def Q2_run(NewData,TrainData,k,XTarget,TrainTarget,flag = 0):
 
 #---add to main---
 for k_num in [1,3,5,50]:
-    #change the 4th arg to do train and test 
+    #change the 4th arg to do train and test
     Q2_run(newData,trainData,k_num,validTarget,trainTarget,flag = 1)
 
 plt.show()
+
+
+
 
 
