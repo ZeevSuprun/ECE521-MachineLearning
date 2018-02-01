@@ -8,29 +8,20 @@ import numpy as np
 
 #######################################
 
-def distance(matrixX, matrixZ):
-    (N1, d) = matrixX.shape
-    (N2, d) = matrixZ.shape
-
-    #Reshape matrix Z into being a 1x(N2*d) row.
-    matrixZreshaped = tf.reshape(matrixZ, [-1, N2 * d])
-    #tile matrixX so that it is repeated N2 times horizontally. dim N1 x (N2*d)
-    repMatrixX = tf.tile(matrixX, [1, N2])
-    #tile the reshaped matrixZ so that it is repeated for N1 rows. dim N1 x (N2*d)
-    repMatrixZ = tf.tile(matrixZreshaped, [N1, 1])
-
-
-    differenceMatrix = tf.subtract(repMatrixZ, repMatrixX)
-    print('differenceMatrix Size = ',differenceMatrix.eval(session=sess).size)
-    differenceVector = tf.reshape(differenceMatrix, [-1, d])
-    print('differenceVector Size = ',differenceMatrix.eval(session=sess).size)
-    #elementwise multiply
-    matrixMul = tf.multiply(differenceVector, differenceVector)
-    print('MatrixMulSize = ',matrixMul.eval(session=sess).size)
-    distanceMatrix = tf.reshape(tf.reduce_sum(matrixMul, 1), [N1, N2])
-    # distanceMatrix contains pairwise Euclidean distances
-
-    return distanceMatrix
+def distance(X,Z):
+    '''
+    Euclidean distance
+    Input: X is a N1xd matrix
+           Z is a N2xd matirx
+    Output: dist is a NxM matrix where dist[i,j] is the square norm between A[i,:] and B[j,:]
+    i.e. dist[i,j] = ||X[i,:]-Z[j,:]||^2
+    '''
+    #column vector of x norms
+    X_norm = tf.reshape(tf.reduce_sum(X**2, axis=1), [X.shape[0],1])
+    #row vector of z norms
+    Z_norm = tf.reshape(tf.reduce_sum(Z**2, axis=1), [1,Z.shape[0]])
+    dist = X_norm + Z_norm-2*tf.matmul(X,tf.transpose(Z))
+    return dist
 
 
 
