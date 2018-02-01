@@ -19,7 +19,7 @@ def D_euc(X,Z):
     return dist
 
 #---Q2 part 1: choosing the nearest neighbours.---
-def Avgnn(NewData,TrainData,k):
+def GetResponsibility(NewData,TrainData,k):
     '''
     Average nearest number
     Input: NewData is a N1xd matrix (i.e. testData)
@@ -57,10 +57,10 @@ def predict(trainData,trainTarget, k, newData, targetData):
             All inputs are numpy arrays.
 
     Output: (prediction, Mean Squared error of prediction and target)
-
+    Prediction made by taking average k nearest neighbours.
     '''
 
-    index, responsibility = Avgnn(newData, trainData, k)
+    index, responsibility = GetResponsibility(newData, trainData, k)
 
     #prediction of the value for the new data.
     pred = np.matmul(responsibility, trainTarget)
