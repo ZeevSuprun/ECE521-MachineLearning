@@ -1,7 +1,7 @@
 
 import tensorflow as tf
 import numpy as np
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 #---Q1 Euclidean Distance Function---
 def D_euc(X,Z):
@@ -30,7 +30,6 @@ def GetResponsibility(NewData,TrainData,k):
     l2 = D_euc(NewData,TrainData)
     #No bottom_k exists in tf, so make Euc dist negative to sort
     value,index = sess.run(tf.nn.top_k(-l2,k=k))
-
     #convert the index matrix into an array of column indices and an array of row indices.
     #print(index)
     cols = index.ravel()
@@ -39,8 +38,8 @@ def GetResponsibility(NewData,TrainData,k):
     #print(sz)
     #print(cols)
     #print('rows = \n', rows)
-
     responsibility = np.zeros(l2.shape)
+    ##print('resp: ', responsibility.shape)
     #can now use integer array indexing to create the responsibility matrix without loops.
     #Note: this works only in numpy, not in tensorflow.
     responsibility[rows,cols] = 1/k
@@ -55,45 +54,44 @@ def predict(trainData,trainTarget, k, newData, targetData):
             NewData is input data whose output you're predicting
             TargetData is the target for the NewData.
             All inputs are numpy arrays.
-
     Output: (prediction, Mean Squared error of prediction and target)
     Prediction made by taking average k nearest neighbours.
     '''
+
 
     index, responsibility = GetResponsibility(newData, trainData, k)
 
     #prediction of the value for the new data.
     pred = np.matmul(responsibility, trainTarget)
 
-    #mean squared error of prediction and target data
-    MSE = np.sum((pred - targetData)) ** 2 / (2*int(pred.shape[0]))
-
-    #print('new data: ', newData)
+    #print('new data: ', newData.shape)
     #print('Train data: ', trainData)
     #print('target: ', targetData.shape)
-    #print('resp: ', responsibility)
+    #print('resp: ', responsibility.shape)
     #print('pred: ', pred.shape)
     #print('prediction = ', pred)
     #print('target = ', targetData)
-
-    return pred, MSE
+    return pred
 
 
 if __name__ == '__main__':
-    #---Q2 setup, Generating the test data set. (code given)---
+    #---Q2 setup, data set is shuffled and split to train, test and valid sets---
+    #(code given)
     np.random.seed(521)
     Data = np.linspace(1.0 , 10.0 , num =100) [:, np. newaxis]
     Target = np.sin( Data ) + 0.1 * np.power( Data , 2) \
     + 0.5 * np.random.randn(100 , 1)
     randIdx = np.arange(100)
+    #print('randomIdxGiven',randIdx)
+
     np.random.shuffle(randIdx)
     trainData, trainTarget = Data[randIdx[:80]], Target[randIdx[:80]]
     validData, validTarget = Data[randIdx[80:90]], Target[randIdx[80:90]]
     testData, testTarget = Data[randIdx[90:100]], Target[randIdx[90:100]]
 
     #---initialize newData---
-    newData = np.linspace(1.0,10.0,num =1000)[:, np.newaxis]
-
+    N = 9
+    newData = np.linspace(1.0,10,num =892)[:, np.newaxis]
 
     #---tensorflow setup---
     init = tf.global_variables_initializer()
@@ -102,17 +100,27 @@ if __name__ == '__main__':
 
 
     for k_num in [1,3,5,50]:
-        #change the 4th arg to do train and test
-        (trainPred, trainMSE) = predict(trainData, trainTarget, k_num, trainData, trainTarget)
-        print ('k = ',k_num,' training MSE = {0:.5f}'.format(trainMSE))
 
-        (testPred, testMSE) = predict(trainData, trainTarget, k_num, testData, testTarget)
-        print ('k = ',k_num,' test MSE = {0:.5f}'.format(testMSE))
+        pred = predict(trainData, trainTarget, k_num, newData, validTarget)
+        trainMSE = np.sum(pred[(randIdx[:80]*N)] - trainTarget) ** 2 / (2 * int(trainTarget.shape[0]))
+        validMSE = np.sum(pred[(randIdx[80:90]*N)]-validTarget)** 2 / (2*int(validTarget.shape[0]))
+        testMSE = np.sum(pred[(randIdx[90:100]*N)] - testTarget) ** 2 / (2 * int(testTarget.shape[0]))
 
-        (validPred, validMSE) = predict(trainData, trainTarget, k_num, validData, validTarget)
-        print ('k = ',k_num,' validation MSE = {0:.5f}'.format(validMSE))
+        print('k = ',k_num,' validation MSE = {0:.8f}'.format(validMSE))
+        print('k = ', k_num, ' training MSE = {0:.8f}'.format(trainMSE))
+        print('k = ', k_num, ' test MSE = {0:.8f}'.format(testMSE))
 
-    #plt.show()
+
+        plt.figure()
+        plt.plot(trainData, trainTarget, 'bo', label='train')
+        plt.plot(validData, validTarget, 'ro', label='valid')
+        plt.plot(testData, testTarget, 'yo', label='test')
+        plt.plot(newData, pred, 'g', label='prediction')
+        plt.title('k = ' + str(k_num))
+        plt.legend(loc=2)
+        plt.savefig('part2_K_'+ str(k_num)+'.jpg')
+
+plt.show()
 
 
 
