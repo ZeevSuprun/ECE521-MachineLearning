@@ -1,10 +1,12 @@
 import tensorflow as tf
 import numpy as np
+import matplotlib.pyplot as plt
 
 def data_segmentation(data_path, target_path, task):
     # task = 0 >> select the name ID targets for face recognition task
     # task = 1 >> select the gender ID targets for gender recognition task
     data = np.load(data_path)/255
+    print('raw data',data.shape)
     data = np.reshape(data, [-1, 32*32])
     target = np.load(target_path)
     np.random.seed(45689)
@@ -18,7 +20,7 @@ def data_segmentation(data_path, target_path, task):
     trainTarget, validTarget, testTarget =  target[rnd_idx[1:trBatch], task], \
                                             target[rnd_idx[trBatch+1:trBatch + validBatch], task],\
                                             target[rnd_idx[trBatch + validBatch + 1:-1], task]
-    return trainData, validData, testData, trainTarget, validTarget, testTarget
+    return trainData, validData, testData, trainTarget, validTarget, testTarget, task
 
 
 #---Q1 Euclidean Distance Function---
@@ -40,7 +42,7 @@ def D_euc(X,Z):
 def GetResponsibility(NewData,TrainData,k):
     '''
     Input: NewData is a N1xd matrix (i.e. testData)
-           TrainData is a N2xd matirx (i.e. trainData)
+           TrainData is a N2xd matrix (i.e. trainData)
            k is number of smallest value
     Output: Index(N1xk) and responsibility matrix(N1xN2)
     '''
@@ -65,21 +67,20 @@ def GetResponsibility(NewData,TrainData,k):
     return index,value
 
 
-def predictLabel(trainData,trainTarget, k, newData, targetData):
+def predictLabel(trainData,trainTarget, k, newData, targetData,flag =0):
     '''
     Input: TrainData is the training data
             k is k for k-nn
             NewData is input data whose output you're predicting
             TargetData is the target for the NewData.
             All inputs are numpy arrays.
-
     Output: (prediction, Mean Squared error of prediction and target)
     prediction is made by taking the label of the k nearest neighbours. (whichever is most frequent).
     '''
 
-    #print('Train data: ', trainData.shape)
-    #print('Train target: ', trainTarget.shape)
-    #print('new data: ', newData.shape)
+    print('Train data: ', trainData.shape)
+    print('Train target: ', trainTarget.shape)
+    print('new data: ', newData.shape)
 
     #set all non-neighbours to 0.
     index, resp = GetResponsibility(newData, trainData, k)
@@ -87,7 +88,7 @@ def predictLabel(trainData,trainTarget, k, newData, targetData):
     n1,d = newData.shape
     pred = np.zeros([newData.shape[0],1])
 
-    # print('resp: ', responsibility)
+    print('resp: ', resp.shape)
 
 
     for row in range(n1):
@@ -103,10 +104,11 @@ def predictLabel(trainData,trainTarget, k, newData, targetData):
         #print('prediction: ', pred[row])
 
     #classification error is the fraction of corrrect results.
-    #print('pred: ', pred.shape)
+    print('pred: ', pred.shape)
     #print('target: ', targetData.shape)
 
     boolArray = pred.ravel() == targetData.ravel()
+    print ('bool Array',boolArray,boolArray.shape)
     #print(boolArray)
     #print('boolShape = ', boolArray.shape)
     sm = np.sum(boolArray)
@@ -115,11 +117,22 @@ def predictLabel(trainData,trainTarget, k, newData, targetData):
     err = 1 - sm / (int(pred.shape[0]))
     #print('err = ', err)
 
+    #track the information of failure case when k = 10
+    #we need trainDataIndex to reshape then plot
+    #trainDataIndex of 10 nn is returned by GetResponsibility()
+    #newDataIndex = predIndex
+    if flag:
+        failedIndex = np.argmin(boolArray)
+        print('failIndex', failedIndex)
+        trainIndex,respForFailure = GetResponsibility(newData[failedIndex:,:],trainData,k)
+        print('trainIndex',trainIndex)
+        return failedIndex,trainIndex[0]
+
     return pred, err
 
 
 if __name__ == '__main__':
-    trainData, validData, testData, trainTarget, validTarget, testTarget = data_segmentation('data.npy', 'target.npy', 0)
+    trainData, validData, testData, trainTarget, validTarget, testTarget, TASK = data_segmentation('data.npy', 'target.npy', 0)
 
     #---tensorflow setup---
     init = tf.global_variables_initializer()
@@ -127,14 +140,39 @@ if __name__ == '__main__':
     sess.run(init)
 
     #for k_num in [1, 5, 10, 25, 50, 100, 200]:
-    for k_num in [1]:
-        #change the 4th arg to do train and test
-        (trainPred, trainMSE) = predictLabel(trainData, trainTarget, k_num, trainData, trainTarget)
-        print ('k = ',k_num,' training class error = {0:.5f}'.format(trainMSE))
+    #for k_num in [10]:
+        #(trainPred, trainMSE) = predictLabel(trainData, trainTarget, k_num, trainData, trainTarget)
+        #print ('k = ',k_num,' training class error = {0:.5f}'.format(trainMSE))
+        #
+        #(testPred, testMSE) = predictLabel(trainData, trainTarget, k_num, testData, testTarget)
+        #print ('k = ',k_num,' test class error = {0:.5f}'.format(testMSE))
 
-        (testPred, testMSE) = predictLabel(trainData, trainTarget, k_num, testData, testTarget)
-        print ('k = ',k_num,' test class error = {0:.5f}'.format(testMSE))
+        # (validPred, validMSE) = predictLabel(trainData, trainTarget, k_num, validData, validTarget)
+        # print ('k = ',k_num,' validation class error = {0:.5f}'.format(validMSE))
 
-        (validPred, validMSE) = predictLabel(trainData, trainTarget, k_num, validData, validTarget)
-        print ('k = ',k_num,' validation class error = {0:.5f}'.format(validMSE))
+    failedIdx,trainIdx = predictLabel(trainData, trainTarget, 10, validData, validTarget,flag = 1)
+
+    plt.figure(figsize=(12,12*(5**0.5-1)/2 ))
+
+
+    for i in range(10):
+        plt.subplot(3,5,i+6)
+        plt.imshow(trainData[trainIdx[i]].reshape(32,32)*255,cmap= 'gray')
+        plt.xlabel('ID :  '+str(trainTarget[trainIdx[i]]))
+        plt.subplot(3, 5, 3)
+        plt.imshow(trainData[failedIdx].reshape(32, 32) * 255, cmap='gray')
+        plt.xlabel('ID :  ' + str(validTarget[failedIdx]))
+        plt.tight_layout()
+    if TASK == 0:
+
+        plt.title('Failed Facial Recognization')
+        plt.savefig('part3FFR.jpg')
+    else:
+        plt.title('Failed Gender Recognization')
+        plt.savefig('plsShave.jpg')
+
+
+
+
+    plt.show()
 
