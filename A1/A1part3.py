@@ -132,7 +132,7 @@ def predictLabel(trainData,trainTarget, k, newData, targetData,flag =0):
 
 
 if __name__ == '__main__':
-    trainData, validData, testData, trainTarget, validTarget, testTarget, TASK = data_segmentation('data.npy', 'target.npy', 0)
+    trainData, validData, testData, trainTarget, validTarget, testTarget, TASK = data_segmentation('data.npy', 'target.npy', 1)
 
     #---tensorflow setup---
     init = tf.global_variables_initializer()
@@ -155,12 +155,13 @@ if __name__ == '__main__':
     plt.figure(figsize=(12,12*(5**0.5-1)/2 ))
 
 
+
     for i in range(10):
         plt.subplot(3,5,i+6)
         plt.imshow(trainData[trainIdx[i]].reshape(32,32)*255,cmap= 'gray')
         plt.xlabel('ID :  '+str(trainTarget[trainIdx[i]]))
         plt.subplot(3, 5, 3)
-        plt.imshow(trainData[failedIdx].reshape(32, 32) * 255, cmap='gray')
+        plt.imshow(validData[failedIdx].reshape(32, 32) * 255, cmap='gray')
         plt.xlabel('ID :  ' + str(validTarget[failedIdx]))
         plt.tight_layout()
     if TASK == 0:
@@ -169,7 +170,7 @@ if __name__ == '__main__':
         plt.savefig('part3FFR.jpg')
     else:
         plt.title('Failed Gender Recognization')
-        plt.savefig('plsShave.jpg')
+        plt.savefig('part3FGR.jpg')
 
 
 
