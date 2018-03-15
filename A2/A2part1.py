@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 import plotly as py
 import plotly.graph_objs as go
+import time
 
 
 def calcMSE(Xmat, Ymat, w):
@@ -12,6 +13,19 @@ def calcMSE(Xmat, Ymat, w):
     currLoss = np.sum((p)**2, axis = 0, keepdims=True)/(2*n)
 
     return currLoss
+
+def calcError(Xmat, Ymat, w):
+    #calculate the percent error.
+    #
+    p = np.matmul(Xmat,w)
+    n = Xmat.shape[0]
+    #print(p.shape)
+    #print(p[0:10])
+    #prediction is 1 if greater than 0.5 and 0 otherwise.
+    p = p > 0.5;
+
+    return sum(p == Ymat)/n
+
 
 def linearSGD(trainData, trainTarget, miniBatchSize, learnRate, decayCoeff):
     #Perform linear stochastic gradient descent using the loss function
@@ -83,7 +97,8 @@ def part1_1(trainData, trainTarget):
     #learningRate =[0.005, 0.001, 0.0001];
     #plot training error vs # of epochs.
     #choose best learning rate.
-    learnRate = [0.005, 0.001, 0.0001]
+    #learnRate = [0.005, 0.001, 0.0001]
+    learnRate = [0.01]
 
     for learn in learnRate:
         print('learning with rate ', learn)
@@ -114,15 +129,18 @@ def part1_2(trainData, trainTarget):
 
     for batchSz in miniBatchSize:
         print('With batch size ', batchSz)
+        runTime = time.clock()
         w, loss = linearSGD(trainData, trainTarget, batchSz, 0.005, 0)
+        runTime = time.clock() - runTime
         #note that since the decay coefficeint is 0 our loss is the MSE.
-        print('Final Training MSE is ', calcMSE(Xmat,trainTarget,w))
+
+        print('Final Training MSE is ', calcMSE(Xmat,trainTarget,w), '. The training time was: ', runTime)
 
     #miniBatchSize: 500 --> MSE 0.01197566
     #miniBatchSize:1500 --> MSE 0.01197033
     #miniBatchSize:3500 --> MSE 0.01196847
 
-def part1_3(trainData, trainTarget, validData, validTarget):
+def part1_3(trainData, trainTarget, validData, validTarget, testData, testTarget):
     #Part 3:
     #SGD with lambda  = [0,0.001,0.1, 1]
     #B = 500, learnRate = 0.005, numIter = 20k
@@ -132,6 +150,10 @@ def part1_3(trainData, trainTarget, validData, validTarget):
     validXmat = np.reshape(validData, (validData.shape[0], validData.shape[1]*validData.shape[2]))
     biasCol = np.ones((validXmat.shape[0],1))
     validXmat = np.append(biasCol,validXmat, axis=1)
+
+    testXmat = np.reshape(testData, (testData.shape[0], testData.shape[1]*testData.shape[2]))
+    biasCol = np.ones((testXmat.shape[0],1))
+    testXmat = np.append(biasCol,testXmat, axis=1)
 
     #reshaping the training data
     Xmat = np.reshape(trainData, (trainData.shape[0], trainData.shape[1]*trainData.shape[2]))
@@ -144,19 +166,53 @@ def part1_3(trainData, trainTarget, validData, validTarget):
         print('With lambda =  ', dCoeff)
         w, loss = linearSGD(trainData, trainTarget, 500, 0.005, dCoeff)
         #note that since the decay coefficeint is 0 our loss is the MSE.
-        print('test accuracy for lambda = ',dCoeff,': ', calcMSE(Xmat, trainTarget, w))
-        print('validation accuracy for lambda = ',dCoeff,': ', calcMSE(validXmat, validTarget, w), '\n')
+        print('training accuracy for lambda = ',dCoeff,': ', calcError(Xmat, trainTarget, w))
+        print('validation accuracy for lambda = ',dCoeff,': ', calcError(validXmat, validTarget, w), '\n')
+        print('test accuracy for lambda = ',dCoeff,': ', calcError(testXmat, testTarget, w), '\n')
 
-    #lambda = 0:
-    #test MSE =  0.01198
-    #valid MSE = 0.01441
-    #lambda = 0.001:
-    #test MSE =  0.01205
-    #valid MSE = 0.01443
-    #lambda = 0.1:
-    #test MSE =  0.01625
-    #valid MSE = 0.01638
 
+def part1_4(trainData, trainTarget, validData, validTarget, testData, testTarget):
+
+    #reshaping the validation data so that I can do math to it.
+    validXmat = np.reshape(validData, (validData.shape[0], validData.shape[1]*validData.shape[2]))
+    biasCol = np.ones((validXmat.shape[0],1))
+    validXmat = np.append(biasCol,validXmat, axis=1)
+
+    #Reshaping test data.
+    testXmat = np.reshape(testData, (testData.shape[0], testData.shape[1]*testData.shape[2]))
+    biasCol = np.ones((testXmat.shape[0],1))
+    testXmat = np.append(biasCol,testXmat, axis=1)
+
+    #reshaping the training data
+    Xmat = np.reshape(trainData, (trainData.shape[0], trainData.shape[1]*trainData.shape[2]))
+    biasCol = np.ones((Xmat.shape[0],1))
+    Xmat = np.append(biasCol,Xmat, axis=1)
+
+    runTime = time.clock()
+    #calculating optimal w from the normal equation:
+    #w = inv(X.T*X)*X.T*y
+    p1 = np.linalg.inv(np.matmul(np.transpose(Xmat), Xmat))
+    print(Xmat.shape)
+    p2 = np.matmul(p1, np.transpose(Xmat))
+    w = np.matmul(p2,trainTarget)
+    runTime = time.clock() - runTime
+
+    print('For the normal equation:\n Run time: ', runTime, '\n Training MSE:', calcMSE(Xmat, trainTarget, w))
+    print('Training Accuracy: ', calcError(Xmat, trainTarget, w))
+    print('Validation Accuracy: ', calcError(validXmat, validTarget, w))
+    print('Test Accuracy: ', calcError(testXmat, testTarget, w))
+
+    runTime = time.clock()
+    w, loss = linearSGD(trainData, trainTarget, 500, 0.005, 0)
+    runTime = time.clock() - runTime
+
+    print('For SGD:\nRun time: ', runTime, '\nTraining MSE:', calcMSE(Xmat, trainTarget, w))
+    print('Training Accuracy: ', calcError(Xmat, trainTarget, w))
+    print('Validation Accuracy: ', calcError(validXmat, validTarget, w))
+    print('Test Accuracy: ', calcError(testXmat, testTarget, w))
+
+
+    return
 
 
 if __name__ == '__main__':
@@ -187,7 +243,8 @@ if __name__ == '__main__':
 
     #part1_1(trainData,trainTarget)
     #part1_2(trainData,trainTarget)
-    part1_3(trainData,trainTarget, validData, validTarget)
+    #part1_3(trainData,trainTarget, validData, validTarget, testData, testTarget)
+    part1_4(trainData,trainTarget, validData, validTarget, testData, testTarget)
 
 
 
