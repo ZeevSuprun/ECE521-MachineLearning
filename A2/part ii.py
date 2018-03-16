@@ -29,48 +29,68 @@ def linearSGD(trainData,trainTarget,eta=0.005,B=500,lam=0,iterNum=20000):
             losslist.append(L2)
     return losslist,w
 
-def logisticSGD(trainData,trainTarget,validData,validTarget,eta=0.001,B=500,lam=0.01,iterNum=1000):
-    trainData = trainData.reshape(len(trainData),-1)
-    validData = validData.reshape(len(validData),-1)
-    N,d = trainData.shape  # num of data, num of features
-    X = np.concatenate((np.ones((N,1)),trainData),axis=1) #adding bias
-    validData = np.concatenate((np.ones((len(validData),1)),validData), axis=1)
-    y = trainTarget
-    w = np.zeros(shape=(d+1,1))
-    losslist = []   #create loss2 list
-    acclist=[]
-    for i in range(iterNum):
-        batchIndices = np.arange(N)
-        np.random.shuffle(batchIndices)
-        batchIndices = batchIndices[:B]
-        Xn = X[batchIndices]   #reshape Xi as a column vector
-        yn = y[batchIndices]
-        Xnw = np.matmul(Xn,w)
-        Xw=np.matmul(validData,w)
-        grad = np.matmul(Xn.transpose(),(1-yn-1/(1+np.exp(Xnw))))/B + lam*w
-        w -= eta*grad
-        #append when integer epoch
-        if i*B%N == 0:
-            y_tensor = tf.convert_to_tensor(validTarget, dtype=np.float32)
-            Xw_tensor = tf.convert_to_tensor(Xw, dtype=np.float32)
-            loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=y_tensor,logits=Xw_tensor))
-            losslist.append(sess.run(loss)+lam/2.*np.sum(w**2,axis=0))
-            validAcc = np.mean(abs(Xw-validTarget)<abs(Xw-(1-validTarget)))
-            acclist.append(validAcc)
-    epochlist=range(len(losslist))
-
-    return losslist,acclist,epochlist
-
 def squared_error(labels=None,logits=None):
+    loss = tf.losses.mean_squared_error(labels,logits,weights =0.5)
     err = tf.add(logits,-labels)
-    return 0.5*(tf.multiply(err,err))
+    return loss#1*(tf.multiply(err,err))
 
-def miniBatch_aOp(trainData,trainTarget,validData,validTarget,lam=0.01,B=500,iterNum=100,classNum=10,lossfunc=tf.nn.softmax_cross_entropy_with_logits_v2,*arg,**kwargs):
+
+def miniBatch_SGD(trainData,trainTarget,validData,validTarget,lam=0.01,eta=0.001,B=500,iterNum=1000,classNum=1,lossfunc=tf.nn.sigmoid_cross_entropy_with_logits,*arg,**kwargs):
+    #reshape data and targets
+    X_train = trainData.reshape(len(trainData), -1)
+    X_valid = validData.reshape(len(validData),-1)
+    y_train = trainTarget
+    N, d = X_train.shape  #len(data), len(features)
+    #create label matrix based on probabilities
+    #convert X and y to tensor
+    y_valid = tf.convert_to_tensor(validTarget, dtype=np.float32)
+    X_valid = tf.convert_to_tensor(X_valid, dtype=np.float32)
+    #create Xn and yn placeholder
+    yn_train = tf.placeholder(dtype=np.float32,shape=(B,classNum))
+    Xn_train = tf.placeholder(dtype=np.float32,shape=(B,d))
+    #create w, b, bn tf.variables
+    w = tf.Variable(tf.zeros(shape=(d,classNum)))
+    b = tf.Variable(tf.zeros(shape=(len(validData),classNum)))
+    bn = tf.Variable(tf.zeros(shape=(B,classNum)))
+    #create entire batch graph to output loss and acc
+    yHat = tf.add(tf.matmul(X_valid, w), b)
+    cross_entropy = tf.reduce_mean(lossfunc(labels=y_valid, logits=yHat))
+    weight_penalty = tf.multiply(lam / 2., tf.reduce_sum(tf.multiply(w, w)))
+    loss = tf.add(cross_entropy, weight_penalty)
+    #create mini-batch graph to train
+    ynHat_train = tf.add(tf.matmul(Xn_train, w), bn)
+    cross_entropy = tf.reduce_mean(lossfunc(labels=yn_train, logits=ynHat_train))
+    weight_penalty = tf.multiply(lam / 2., tf.reduce_sum(tf.multiply(w, w)))
+    batchloss = tf.add(cross_entropy, weight_penalty)
+    train = tf.train.GradientDescentOptimizer(learning_rate=eta).minimize(batchloss)
+    #initialize and then evaluate graph step by step
+    init = tf.global_variables_initializer()
+    lossList=[]
+    accList=[]
+    with tf.Session() as sess:
+        sess.run(init)
+        for i in range(iterNum):
+            #shuffle batch
+            batchIndices = np.arange(N)
+            np.random.shuffle(batchIndices)
+            batchIndices = batchIndices[:B]
+            Xn = X_train[batchIndices]
+            yn = y_train[batchIndices]
+            #train step
+            sess.run(train,feed_dict={Xn_train:Xn,yn_train:yn})
+            #memorize output
+            lossList.append(sess.run(loss))
+            y_pred =sess.run(yHat)
+            #print(y_pred.shape)
+            accList.append(np.mean((abs(y_pred-validTarget))<abs(y_pred-(1-validTarget))))
+    return lossList,accList,np.linspace(0,iterNum*B/float(N),len(lossList))
+
+def miniBatch_aOp(trainData,trainTarget,validData,validTarget,lam=0.01,eta=0.001,B=500,iterNum=1000,classNum=10,lossfunc=tf.nn.softmax_cross_entropy_with_logits,*arg,**kwargs):
     #reshape data and targets
     X_train = trainData.reshape(len(trainData), -1)
     X_valid = validData.reshape(len(validData),-1)
     N, d = X_train.shape  #len(data), len(features)
-    #create true label matrix based on probabilities
+    #create label matrix based on probabilities
     if classNum > 1:
         y_train = np.zeros(shape=(N,classNum))
         for i in range(N):
@@ -78,6 +98,9 @@ def miniBatch_aOp(trainData,trainTarget,validData,validTarget,lam=0.01,B=500,ite
         y_valid = np.zeros(shape=(len(X_valid),classNum))
         for i in range(len(X_valid)):
             y_valid[i,validTarget[i]]=1.
+    else:
+        y_train = trainTarget
+        y_valid = validTarget
 
     #convert X and y to tensor
     y_valid = tf.convert_to_tensor(y_valid, dtype=np.float32)
@@ -94,13 +117,15 @@ def miniBatch_aOp(trainData,trainTarget,validData,validTarget,lam=0.01,B=500,ite
     cross_entropy = tf.reduce_mean(lossfunc(labels=y_valid, logits=yHat))
     weight_penalty = tf.multiply(lam / 2., tf.reduce_sum(tf.multiply(w, w)))
     loss = tf.add(cross_entropy, weight_penalty)
+
     y_pred = tf.argmax(yHat,axis=1)
+
     #create mini-batch graph to train
     ynHat_train = tf.add(tf.matmul(Xn_train, w), bn)
     cross_entropy = tf.reduce_mean(lossfunc(labels=yn_train, logits=ynHat_train))
     weight_penalty = tf.multiply(lam / 2., tf.reduce_sum(tf.multiply(w, w)))
     batchloss = tf.add(cross_entropy, weight_penalty)
-    train = tf.train.AdamOptimizer(learning_rate=0.001).minimize(batchloss)
+    train = tf.train.AdamOptimizer(learning_rate=eta).minimize(batchloss)
     #initialize and then evaluate graph step by step
     init = tf.global_variables_initializer()
     lossList=[]
@@ -111,14 +136,20 @@ def miniBatch_aOp(trainData,trainTarget,validData,validTarget,lam=0.01,B=500,ite
             #shuffle batch
             batchIndices = np.arange(N)
             np.random.shuffle(batchIndices)
-            batchIndices = batchIndices[:500]
+            batchIndices = batchIndices[:B]
             Xn = X_train[batchIndices]
             yn = y_train[batchIndices]
             #train step
             sess.run(train,feed_dict={Xn_train:Xn,yn_train:yn})
+            #print(np.mean(abs(sess.run(yHat)-validTarget)<abs(sess.run(yHat)-(1-validTarget))))
             #memorize output
             lossList.append(sess.run(loss))
-            accList.append(np.mean(sess.run(y_pred) == validTarget))
+            if classNum>1:
+                accList.append(np.mean(sess.run(y_pred) == validTarget))
+            else:
+                accList.append(np.mean(abs(sess.run(yHat)-validTarget)<abs(sess.run(yHat)-(1-validTarget))))
+        print(len(lossList),len(accList))
+
     return lossList,accList,np.linspace(0,iterNum*B/float(N),len(lossList))
 
 def notMNIST_2c(Q11=0,Q12=0,Q13=0,Q14=0,Q211=0,Q212=0,Q213=0):
@@ -147,11 +178,12 @@ def notMNIST_2c(Q11=0,Q12=0,Q13=0,Q14=0,Q211=0,Q212=0,Q213=0):
         print('---Q11---')
         plt.figure()
         for learnRate in [0.005,0.001,0.0001]:
-            plt.plot(linearSGD(trainData,trainTarget,eta=learnRate)[0],\
-                     label ='learning Rate = '+str(learnRate))
-            plt.xlabel('epoch')
+            loss = linearSGD(trainData, trainTarget, eta=learnRate)[0]
+            plt.plot(loss,label ='learning Rate = '+str(learnRate))
+            plt.xlabel('number of epochs')
             plt.ylabel('train loss')
-            plt.legend()
+            plt.xlim(0,len(loss))
+            plt.legend(fontsize='small')
         plt.savefig('Q11.jpg')
         plt.show()
 #1.2
@@ -184,78 +216,149 @@ def notMNIST_2c(Q11=0,Q12=0,Q13=0,Q14=0,Q211=0,Q212=0,Q213=0):
 
 
              print("validation accuracy= ", acc_valid,"test accuracy= ",acc_test,'when lambda = ',decayCoef)
-
-        #To do test MSE
 #1.4
     if Q14:
         print('---Q14---')
-        start  = time.time()
-        X = trainData.reshape(len(trainData), -1)
-        n,d = X.shape  # num of data, num of features
-        X = np.concatenate((np.ones((n,1)),X),axis=1)  # adding bias
-        y = trainTarget
-        #closed form LMS solution
-        w_opt = np.linalg.solve(np.matmul(X.transpose(),X), np.matmul(X.transpose(),y))
-        L2 = calcMSE(X,y,w_opt)
+        trainData = trainData.reshape(len(trainData), -1)
+        trainData = np.concatenate((np.ones((len(trainData), 1)), trainData), axis=1)
+
+        validData = validData.reshape(len(validData), -1)
+        validData = np.concatenate((np.ones((len(validData), 1)), validData), axis=1)
+
+        testData = testData.reshape(len(testData), -1)
+        testData = np.concatenate((np.ones((len(testData), 1)), testData), axis=1)
+
+        # closed form LMS solution
+        start = time.time()
+        w_opt = np.linalg.solve(np.matmul(trainData.transpose(), trainData), np.matmul(trainData.transpose(), trainTarget))
         end = time.time()
         elapse = end - start
-        print('Closed form MSE ',L2,' time ',elapse, 's')
+
+        train_loss = calcMSE(trainData, trainTarget, w_opt)
+        valid_loss = calcMSE(validData,validTarget,w_opt)
+        test_loss = calcMSE(testData,testTarget,w_opt)
+
+        def Acc(X,y):
+            yHat = np.matmul(X,w_opt)
+            return np.mean(abs(yHat-y)<abs(yHat-(1-y)))
+
+        train_acc = Acc(trainData,trainTarget)
+        valid_acc = Acc(validData,validTarget)
+        test_acc = Acc(testData,testTarget)
+
+        print('Computation time ',elapse, 's')
+        print('train loss',train_loss,'train acc',train_acc )
+        print('valid loss',valid_loss,'valid acc',valid_acc)
+        print('test loss',test_loss,'test acc',test_acc)
+
 #2.1.1
     if Q211:
         print('---Q211---')
-        plt.figure()
-        for learnRate in [0.005,0.001,0.0001]: #tuning eta??
-            loss,acc,epoch = logisticSGD(trainData,trainTarget,validData,validTarget,eta=learnRate)
+        for learnRate in [0.005]:
+            valid_loss, valid_acc, valid_epoch = miniBatch_SGD(trainData, trainTarget, validData, validTarget,
+                                                               B=500, lam=0.01, eta=learnRate, classNum=1, iterNum=5000,
+                                                               lossfunc=tf.nn.sigmoid_cross_entropy_with_logits)
+            train_loss, train_acc, train_epoch = miniBatch_SGD(trainData, trainTarget, trainData, trainTarget,
+                                                               B=500, lam=0.01, eta=learnRate, classNum=1, iterNum=5000,
+                                                               lossfunc=tf.nn.sigmoid_cross_entropy_with_logits)
+            print('learnRate=', learnRate, 'train loss', np.mean(train_loss[-20:]), 'train acc',
+                  np.mean(train_acc[-20:]))
+            plt.figure()
             plt.subplot(211)
-            plt.plot(epoch,loss,label='learning Rate = ' + str(learnRate))
-            plt.xlabel('epoch')
-            plt.ylabel('train cross entropy loss')
-            plt.legend()
-            print('last', epoch[-1])
-            if learnRate == 0.005:
-                plt.subplot(212)
-                plt.xlabel('epoch')
-                plt.plot(epoch,loss,label='train cross entropy loss')
-                plt.plot(epoch,acc,label='validation accuracy')
-                plt.legend()
+            plt.title('tuned learning rate=' + str(learnRate))
+            plt.plot(train_epoch, train_loss, label='training cross-entropy loss')
+            plt.plot(valid_epoch, valid_loss, label='validation cross-ntropy loss')
+            plt.ylabel('regularized cross entropy loss')
+            plt.xlim(0,valid_epoch[-1])
+            plt.legend(fontsize='small')
+            plt.subplot(212)
+            print(train_epoch.shape)
+            plt.plot(train_epoch, train_acc, label='training classification accuracy')
+            plt.plot(valid_epoch, valid_acc, label='validation classification accuracy')
+            plt.xlim(0, valid_epoch[-1])
+            plt.xlabel('number of epochs')
+            plt.ylabel('classification accuracy')
+            plt.legend(loc='lower right', fontsize='small')
+
         plt.savefig('Q211.jpg')
         plt.show()
+
     if Q212:
         print('---Q212---')
-        sigmoid_loss,sigmoid_acc,sigmoid_epoch = miniBatch_aOp(trainData,trainTarget,validData,validTarget,classNum=1,lossfunc=tf.nn.sigmoid_cross_entropy_with_logits)
-        SGD_loss,SGD_acc,SGD_epoch = logisticSGD(trainData, trainTarget,eta=0.001)[0]
+        train_loss_SGD, train_acc_SGD, train_epoch_SGD = miniBatch_SGD(trainData, trainTarget, trainData, trainTarget,
+                                                            B=500, lam=0.01, eta=0.001, classNum=1, iterNum=5000,
+                                                            lossfunc=tf.nn.sigmoid_cross_entropy_with_logits)
+
+        train_loss_aOp, train_acc_aOp, train_epoch_aOp = miniBatch_aOp(trainData, trainTarget, trainData, trainTarget,
+                                                            B=500, lam=0.01, eta=0.001, classNum=1, iterNum=5000,
+                                                            lossfunc=tf.nn.sigmoid_cross_entropy_with_logits)
         plt.figure()
-        plt.plot(sigmoid_epoch,sigmoid_loss,label='adam optimizer cross entropy loss')
-        plt.plot(SGD_epoch,SGD_loss,label='SGD cross entropy loss')
-        plt.legend()
+        plt.plot(train_epoch_SGD, train_loss_SGD, label='SGD training cross-entropy loss')
+        plt.plot(train_epoch_aOp, train_loss_aOp, label='AdamOptimizer training cross-entropy loss')
+        plt.ylabel('regularized cross entropy loss')
+        plt.xlabel('number of epochs')
+        plt.xlim(0,train_epoch_aOp[-1])
+
+        plt.legend(fontsize='small')
         plt.savefig('Q212.jpg')
         plt.show()
+
     if Q213:
         print('---Q213---')
+
+        train_loss, train_acc, train_epoch = miniBatch_aOp(trainData, trainTarget, trainData, trainTarget, lam=0.0,
+                                                           classNum=1,eta=0.001,iterNum=3000,
+                                                           lossfunc=tf.nn.sigmoid_cross_entropy_with_logits)
+        # test_loss, test_acc, test_epoch = miniBatch_aOp(trainData, trainTarget, testData, testTarget, lam=0.0,
+        #                                                    classNum=1,eta=0.001,iterNum=5000,
+        #                                                    lossfunc=tf.nn.sigmoid_cross_entropy_with_logits)
+        # valid_loss, valid_acc, valid_epoch = miniBatch_aOp(trainData, trainTarget, validData, validTarget, lam=0.0,
+        #                                                    classNum=1,eta=0.001,iterNum=5000,
+        #                                                    lossfunc=tf.nn.sigmoid_cross_entropy_with_logits)
+        # print('best logistic aOp acc comparision with Q14')
+        # print('train acc',train_acc[-1])
+        # print('valid acc',valid_acc[-1])
+        # print('test acc',test_acc[-1])
+
         #convergence
-        RLMS_loss,RLMS_acc,RLMS_epoch = miniBatch_aOp(trainData, trainTarget,validData,validTarget, lam=0,classNum=1,
-                                       lossfunc=squared_error)
-        sigmoid_loss,sigmoid_acc,sigmoid_epoch = miniBatch_aOp(trainData, trainTarget,validData,validTarget,lam=0.01, classNum=1,
-                                       lossfunc=tf.nn.sigmoid_cross_entropy_with_logits)
+        LMS_loss,LMS_acc,LMS_epoch = miniBatch_aOp(trainData, trainTarget,trainData,trainTarget, lam=0.5,classNum=1,
+                                       lossfunc=squared_error,B=500,eta=0.001,iterNum=3000)
+
         #explanation
         yHat = np.linspace(0,1,1000)
         ydummy = np.zeros(shape=yHat.shape)
         with tf.Session() as sess:
-            cross_entropy_loss = sess.run((tf.nn.sigmoid_cross_entropy_with_logits(labels=ydummy, logits=yHat)))
+            cross_entropy_loss = -np.log(1-yHat)
             squared_error_loss = sess.run((squared_error(labels=ydummy,logits=yHat)))
 
-        plt.figure()
+        plt.figure(1)
         plt.subplot(211)
-        plt.plot(sigmoid_epoch,sigmoid_loss, label='sigmoid cross entropy loss')
-        plt.plot(RLMS_epoch,RLMS_loss, label='squared-error loss')
-        plt.xlabel('epoch')
-        plt.legend()
+        plt.plot(train_epoch,train_loss, label='cross entropy loss')
+        plt.plot(LMS_epoch,LMS_loss, label='squared-error loss')
+        plt.ylabel('loss')
+        plt.xlim(0,LMS_epoch[-1])
+        plt.legend(fontsize='small')
         plt.subplot(212)
-        plt.plot(yHat,cross_entropy_loss,label='sigmoid cross entropy loss')
-        plt.plot(yHat,squared_error_loss,label='squared_error loss')
-        plt.xlabel('predicted target(true target = 0)')
-        plt.legend()
+        plt.plot(train_epoch, train_acc, label='logistic regression training accuarcy')
+        plt.plot(LMS_epoch, LMS_acc, label='linear regression training accuarcy')
+        plt.xlabel('number of epoches')
+        plt.ylabel('training accuarcy')
+        plt.xlim(0, LMS_epoch[-1])
+        plt.ylim(0,1)
+        plt.legend(loc='lower right',fontsize='small')
         plt.savefig('Q213.jpg')
+        # plt.figure(2)
+        # plt.subplot(221)
+        # plt.plot(yHat,squared_error_loss,label='squared-error loss')
+        # plt.plot(yHat,cross_entropy_loss,label='cross-entropy loss')
+        # plt.xlabel('yHat')
+        # plt.ylabel('squared-error/cross-entropy loss')
+        # plt.legend(loc='upper left',fontsize='small')
+        # plt.subplot(222)
+        # plt.plot(squared_error_loss,cross_entropy_loss)
+        # plt.xlabel('squared-error loss')
+        # plt.ylabel('cross-entropy loss')
+        # plt.savefig('Q213kit3.jpg')
 
         plt.show()
 
@@ -276,14 +379,31 @@ def notMNIST_10c(Q221):
         print('trainData shape', trainData.shape,'trainTarget shape', trainTarget.shape)
         print('validData shape', validData.shape, 'validTarget shape', validTarget.shape)
         print('testData shape', testData.shape, 'testTarget shape', testTarget.shape)
+        for learnRate in [0.0001,0.001,0.005]:
+            valid_loss,valid_acc,valid_epoch = miniBatch_aOp(trainData,trainTarget,validData,validTarget,
+                                                         B=500,lam=0.01,eta=learnRate,classNum=10,iterNum=5000,
+                                                         lossfunc=tf.nn.softmax_cross_entropy_with_logits)
+            train_loss, train_acc, train_epoch = miniBatch_aOp(trainData, trainTarget, trainData, trainTarget,
+                                                           B=500,lam=0.01,eta=learnRate,classNum=10,iterNum=5000,
+                                                           lossfunc=tf.nn.softmax_cross_entropy_with_logits)
+            print('learnRate=',learnRate,'train loss',np.mean(train_loss[-20:]),'train acc',np.mean(train_acc[-20:]))
+            plt.figure()
+            plt.subplot(211)
+            plt.title('learning rate='+str(learnRate))
+            plt.plot(train_epoch,train_loss,label='training cross-entropy loss')
+            plt.plot(valid_epoch,valid_loss,label='validation cross-entropy loss')
+            plt.xlim(0,valid_epoch[-1])
+            plt.ylabel('regularized cross entropy loss')
+            plt.legend(fontsize='small')
+            plt.subplot(212)
+            plt.plot(train_epoch,train_acc,label='training classification accuracy')
+            plt.plot(valid_epoch,valid_acc,label='validation classification accuracy')
+            plt.xlabel('number of epochs')
+            plt.ylabel('classification accuracy')
+            plt.ylim(0,1)
+            plt.xlim(0,valid_epoch[-1])
+            plt.legend(loc='lower right',fontsize='small')
 
-        softmax_loss,softmax_acc,softmax_epoch = miniBatch_aOp(trainData,trainTarget,validData,validTarget,classNum=10,lossfunc=tf.nn.softmax_cross_entropy_with_logits_v2)
-        plt.figure()
-        plt.plot(softmax_epoch,softmax_loss,label='train cross entropy loss')
-        plt.plot(softmax_epoch,softmax_acc,label='validation accuarcy')
-        plt.xlabel('epoch')
-        #plt.ylim(ymin=0)
-        plt.legend()
         plt.savefig('Q221.jpg')
         plt.show()
 
@@ -315,24 +435,39 @@ def faceScrub_6c(Q222):
         print('trainData shape', trainData.shape, 'trainTarget shape', trainTarget.shape)
         print('validData shape', validData.shape, 'validTarget shape', validTarget.shape)
         print('testData shape', testData.shape, 'testTarget shape', testTarget.shape)
+        #tuning
+        for dCoef in [0.01]:#[0,0.001,0.01,0.1,1]:
+            for learnRate in [0.0001]:#[0.005,0.001,0.0001]:
+                valid_loss, valid_acc, valid_epoch = miniBatch_aOp(trainData, trainTarget, validData, validTarget,
+                                                                   B=300,classNum=6,lam=dCoef,eta=learnRate,iterNum=20000,
+                                                                   lossfunc=tf.nn.softmax_cross_entropy_with_logits)
+                train_loss, train_acc, train_epoch = miniBatch_aOp(trainData, trainTarget, trainData, trainTarget,iterNum=20000,
+                                                                   B=300,classNum=6,lam=dCoef,eta=learnRate,
+                                                                   lossfunc=tf.nn.softmax_cross_entropy_with_logits)
+                print('learnRate=', learnRate, 'decay',dCoef,'valid loss', np.mean(valid_loss[-20:]), 'valid acc',
+                      np.mean(valid_acc[-20:]))
+                plt.figure(1)
+                plt.subplot(211)
+                plt.title('weight decay coefficient=' + str(dCoef) + ';learning rate=' + str(learnRate))
+                plt.plot(train_epoch, train_loss, label='training cross-entropy loss')
+                plt.plot(valid_epoch, valid_loss, label='validation cross-entropy loss')
+                plt.xlabel('number of epochs')
+                plt.ylabel('regularized cross-entropy loss')
+                plt.xlim(0,valid_epoch[-1])
+                plt.legend(fontsize='small')
+                plt.subplot(212)
+                plt.plot(train_epoch, train_acc, label='training classification accuracy')
+                plt.plot(valid_epoch, valid_acc, label='validation classification accuracy')
+                plt.xlim(0,valid_epoch[-1])
+                plt.ylim(0,1)
+                plt.xlabel('number of epochs')
+                plt.ylabel('classification accuracy')
+                plt.legend(loc='lower right', fontsize='small')
 
-        softmax_loss, softmax_acc,softmax_epoch = miniBatch_aOp(trainData, trainTarget,validData,validTarget, classNum=6,\
-                                              lossfunc=tf.nn.softmax_cross_entropy_with_logits_v2)
-        plt.figure()
-        plt.plot(softmax_epoch,softmax_loss, label='train cross entropy loss')
-        plt.plot(softmax_epoch,softmax_acc, label='validation accuarcy')
-        plt.xlabel('epoch')
-        plt.ylim(ymin=0)
-        plt.legend()
         plt.savefig('Q222.jpg')
         plt.show()
 
-if __name__ == '__main__':
-    #---tensorflow setup---
-    sess = tf.Session()
-    notMNIST_2c(Q11=0,Q12=0,Q13=1,Q14=0,Q211=0,Q212=0,Q213=0)
-    notMNIST_10c(0)
-    faceScrub_6c(0)
+
 
 
 
