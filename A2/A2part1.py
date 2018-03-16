@@ -191,10 +191,7 @@ def part1_4(trainData, trainTarget, validData, validTarget, testData, testTarget
     runTime = time.clock()
     #calculating optimal w from the normal equation:
     #w = inv(X.T*X)*X.T*y
-    p1 = np.linalg.inv(np.matmul(np.transpose(Xmat), Xmat))
-    print(Xmat.shape)
-    p2 = np.matmul(p1, np.transpose(Xmat))
-    w = np.matmul(p2,trainTarget)
+    w = np.linalg.solve(np.matmul(Xmat.transpose(),Xmat), np.matmul(Xmat.transpose(),trainTarget))
     runTime = time.clock() - runTime
 
     print('For the normal equation:\n Run time: ', runTime, '\n Training MSE:', calcMSE(Xmat, trainTarget, w))
