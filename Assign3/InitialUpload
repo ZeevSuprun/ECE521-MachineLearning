@@ -1,0 +1,100 @@
+###ECE 521 A3
+import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
+
+def set_layer(X_tensor,d_hidden=1000):
+    """
+    layer-wise building block
+    :param X_tensor: input tf.tensor, N by d_(L-1)
+    :param d_hidden: number of the hidden units, d_(L)
+    :return: weighted sum of input, Signal = N by d_(L)
+    """
+    d_input = X_tensor.get_shape().as_list()[-1]
+    std = (3./(d_input+d_hidden))**0.5
+    W = tf.Variable(tf.random_normal([d_input,d_hidden],stddev=std))
+    b = tf.Variable(tf.zeros(d_hidden))
+    return tf.add(tf.matmul(X_tensor, W), b)
+
+with np.load("notMNIST.npz") as data:
+    Data, Target = data ["images"], data["labels"]
+    np.random.seed(521)
+    randIndx = np.arange(len(Data))
+    np.random.shuffle(randIndx)
+    Data = Data[randIndx]/255.
+    Target = Target[randIndx]
+    trainData, trainTarget = Data[:15000], Target[:15000]
+    validData, validTarget = Data[15000:16000], Target[15000:16000]
+    testData, testTarget = Data[16000:], Target[16000:]
+    print('---Data reshaped---')
+    trainData = trainData.reshape(len(trainData), -1)
+    validData = validData.reshape(len(validData), -1)
+    testData = testData.reshape(len(testData), -1)
+    data_num, input_num = trainData.shape
+    trainLabel = np.zeros(shape=(len(trainData), 10))
+    for i in range(len(trainData)):
+        trainLabel[i, trainTarget[i]] = 1.
+    validLabel = np.zeros(shape=(len(validData), 10))
+    for i in range(len(validData)):
+        validLabel[i, validTarget[i]] = 1.
+    testLabel = np.zeros(shape=(len(testData), 10))
+    for i in range(len(testData)):
+        testLabel[i, testTarget[i]] = 1.
+    print('trainData shape', trainData.shape, 'trainTarget shape', trainTarget.shape)
+    print('validData shape', validData.shape, 'validTarget shape', validTarget.shape)
+    print('testData shape', testData.shape, 'testTarget shape', testTarget.shape)
+
+def nn_1L(xxData,xxLabel,epoch_num=50,batch_size=500,learn_rate = 0.001,class_num=10):
+    #define placeholders
+    X = tf.placeholder(tf.float32,[None,trainData.shape[-1]])
+    Y = tf.placeholder(tf.float32,[None,class_num])
+    #setup graph
+    layer_1 = tf.nn.relu(set_layer(X,d_hidden=1000))
+    layer_out = set_layer(layer_1,d_hidden=class_num)
+    pred_class = tf.argmax(layer_out,axis=1)
+    true_class = tf.argmax(Y,axis=1)
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=layer_out,labels=Y))
+    train = tf.train.AdamOptimizer(learn_rate).minimize(loss)
+    acc = tf.reduce_mean(tf.cast(tf.equal(pred_class,true_class),tf.float32))
+    with tf.Session() as sess:
+        loss_list = []
+        err_list = []
+        sess.run(tf.global_variables_initializer())
+        for i in range(epoch_num):
+            err_list.append(1 - sess.run(acc, feed_dict={X: xxData, Y: xxLabel}))
+            loss_list.append(sess.run(loss, feed_dict={X: xxData, Y: xxLabel}))
+            for j in range(data_num//batch_size):
+                # warp batch
+                Xn = trainData[j*batch_size:(j+1)*batch_size]
+                Yn = trainLabel[j*batch_size:(j+1)*batch_size]
+                # train the model
+                sess.run(train, feed_dict={X: Xn, Y: Yn})
+            #output per epoch
+            if i*100%epoch_num==0:
+                print(str(i*100//epoch_num)+'% completed')
+    return loss_list,err_list
+
+def Q11(Q112=0,Q113=0):
+    if Q112==1:
+        train_loss, train_err = nn_1L(trainData,trainLabel)
+        valid_loss, valid_err = nn_1L(trainData, trainLabel)
+        test_loss, test_err = nn_1L(trainData, trainLabel)
+
+        plt.figure()
+        plt.subplot(211)
+        plt.plot(train_loss, label='training cross-entropy loss')
+        plt.plot(valid_loss, label='validation cross-entropy loss')
+        plt.plot(test_loss, label='validation cross-entropy loss')
+        plt.ylabel('cross entropy loss')
+        plt.legend(fontsize='small')
+        plt.subplot(212)
+        plt.plot(train_err, label='training classification error')
+        plt.plot(valid_err, label='validation classification error')
+        plt.plot(test_err, label='test classification error')
+        plt.xlabel('number of epochs')
+        plt.ylabel('classification error')
+        plt.legend(loc='upper right', fontsize='small')
+        plt.savefig('Q112.jpg')
+        plt.show()
+
+Q11(Q112=1)
