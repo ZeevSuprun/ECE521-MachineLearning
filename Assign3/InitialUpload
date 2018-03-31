@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
-def set_layer(X_tensor,d_hidden=1000):
+def set_layer(X_tensor,d_hidden=1000,DoDropout=False):
     """
     layer-wise building block
     :param X_tensor: input tf.tensor, N by d_(L-1)
@@ -13,8 +13,13 @@ def set_layer(X_tensor,d_hidden=1000):
     d_input = X_tensor.get_shape().as_list()[-1]
     std = (3./(d_input+d_hidden))**0.5
     W = tf.Variable(tf.random_normal([d_input,d_hidden],stddev=std))
-    b = tf.Variable(tf.zeros(d_hidden))
-    return tf.add(tf.matmul(X_tensor, W), b)
+    b = tf.Variable(tf.zeros(d_hidden))     
+    nextLayer = tf.add(tf.matmul(X_tensor, W), b)
+    #Implement Dropout
+    if DoDropout = True
+        keep_prob = tf.constant(0.5, dtype = nextLayer.dtype)
+        nextLayer = tf.nn.dropout(nextLayer, keep_prob)
+    return nextLayer
 
 with np.load("notMNIST.npz") as data:
     Data, Target = data ["images"], data["labels"]
