@@ -93,20 +93,24 @@ def neural_net(xxData,xxLabel,epoch_num=50,batch_size=500,learn_rate = 0.01,weig
             percent_prog = (i*100/epoch_num)
             print(percent_prog,'% completed')
             if visualization==1:
-                if percent_prog>=p25 and p25==0:
+                if percent_prog>=25 and p25==0:
                     W25=sess.run(W1)
+                    print('Current classification error: ', err_list[-1])
                     p25=1
-                elif percent_prog>=p50 and p50==0:
-                    W50=sess.run(W1)
+                elif percent_prog>=50 and p50==0:
+                    #W50=sess.run(W1)
+                    print('Current classification error: ', err_list[-1])
                     p50=1
-                elif percent_prog>=p75 and p75==0:
-                    W75=sess.run(W1)
+                elif percent_prog>=75 and p75==0:
+                    #W75=sess.run(W1)
+                    print('Current classification error: ', err_list[-1])
                     p75=1
-                elif i== epoch_num-1:
+                elif i == epoch_num-1:
+                    print('Final classification error: ', err_list[-1])
                     W100=sess.run(W1)
-    if visualization ==1:
-        print('dropout visualization fin, dropout=',dropout)
-        return [W25,W50,W75,W100]
+    #if visualization ==1:
+    #    print('dropout visualization fin, dropout=',dropout)
+    #    return [W25,W50,W75,W100]
 
     print('sub-task finished')
     return loss_list,err_list
@@ -234,20 +238,30 @@ def Questions(test=0,Q112=0,Q113=0,Q121=0,Q122=0,Q131=0,Q132=1,Q141=0):
         for seed in [1000056681,1000056682,1000056683,1000056684,1000056685]:
             np.random.seed(seed)
             learn_rate = np.exp(np.random.rand()*3-7.5)
-            hidden_layer_num = np.random.randint(4)+1
-            d_hidden = np.exp(np.random.rand()*400+100)
+
+            hidden_layer_num = np.random.randint(2)+1
+            #hidden_layer_num = np.random.randint(5)+1
+            d_hidden = np.random.randint(400)+100
             weight_decay = np.exp(np.random.rand()*3-9)
             dropout= np.random.randint(2)
+
             print('seed',seed,'  learn_rate',learn_rate,'  hidden_layer_num',hidden_layer_num, '  d_hidden',d_hidden,'  weight_decay',weight_decay,'  dropout',dropout)
 
+            valid_loss,valid_err = neural_net(validData, validLabel, learn_rate=learn_rate, weight_decay=weight_decay,
+                                               d_hidden=d_hidden, hidden_layer_num=hidden_layer_num, dropout=dropout, visualization=1)
+            print('Validation class error for this seed:, ', valid_err[-1])
+            
+            test_loss, test_err = neural_net(testData, testLabel, learn_rate=learn_rate, weight_decay=weight_decay,
+                                              d_hidden=d_hidden, hidden_layer_num=hidden_layer_num, dropout=dropout, visualization=1)
+            print('Test class error for this seed:, ', test_err[-1])
 Questions(test=0
           ,Q112=0
           ,Q113=0
           ,Q121=0
           ,Q122=0
           ,Q131=0
-          ,Q132=1
-          ,Q141=0)
+          ,Q132=0
+          ,Q141=1)
 
 
 
